@@ -1,0 +1,16 @@
+[package]
+name = "sfynx"
+license = "MIT"
+version = "0.1.0"
+edition = "2021"
+authors = ["Oleksandr Yermakov <olexander.yermakov@gmail.com>"]
+categories = ["cryptography"]
+keywords = ["crypto", "cryptography"]
+description = "General-purpose onion routing packet construction and processor based on Sphinx."
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+cryptimitives = "0.14.5"
+cryptraits = "0.9.1"
+zeroize = "1.5.2"
