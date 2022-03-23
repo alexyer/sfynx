@@ -32,7 +32,10 @@ pub enum SfynxError {
 #[cfg(test)]
 mod tests {
     use cryptimitives::{hash, hmac, key::x25519_ristretto, stream_cipher::chacha20};
-    use cryptraits::{convert::Len, key::KeyPair};
+    use cryptraits::{
+        convert::Len,
+        key::{Generate, KeyPair},
+    };
 
     use crate::{packet::Packet, Address};
 

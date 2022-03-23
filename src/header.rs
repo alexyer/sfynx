@@ -217,7 +217,10 @@ where
 #[cfg(test)]
 mod tests {
     use cryptimitives::{hash::sha256, hmac, key::x25519_ristretto, stream_cipher::chacha20};
-    use cryptraits::{convert::Len, key::KeyPair};
+    use cryptraits::{
+        convert::Len,
+        key::{Generate, KeyPair},
+    };
 
     use crate::{crypto::generate_shared_secrets, header::Header, Address};
 
