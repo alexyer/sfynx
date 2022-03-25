@@ -34,7 +34,7 @@ mod tests {
     use cryptimitives::{hash, hmac, key::x25519_ristretto, stream_cipher::chacha20};
     use cryptraits::{
         convert::Len,
-        key::{Generate, KeyPair},
+        key::{Generate, SecretKey},
     };
 
     use crate::{packet::Packet, Address};
@@ -84,12 +84,12 @@ mod tests {
         let mut circuit_pub_keys = Vec::new();
 
         for _ in 0..max_relays {
-            let keypair = x25519_ristretto::KeyPair::generate();
-            circuit_pub_keys.push(keypair.to_public());
-            circuit_keypairs.push(keypair);
+            let secret = x25519_ristretto::EphemeralSecretKey::generate();
+            circuit_pub_keys.push(secret.to_public());
+            circuit_keypairs.push(secret);
         }
 
-        let session_key = x25519_ristretto::KeyPair::generate();
+        let session_key = x25519_ristretto::EphemeralSecretKey::generate();
 
         let mut payload = [0; 256];
         payload[..13].copy_from_slice(b"Hello, Sfynx!");

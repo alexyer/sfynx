@@ -6,7 +6,7 @@ use cryptraits::{
     convert::{Len, ToVec},
     hash::Hash,
     hmac::Hmac,
-    key::{Blind, KeyPair, SecretKey},
+    key::{Blind, SecretKey},
     key_exchange::DiffieHellman,
     stream_cipher::StreamCipher,
 };
@@ -18,31 +18,31 @@ use crate::{
 };
 
 /// Sphinx packet.
-pub struct Packet<A, HMAC, SC, K, H>
+pub struct Packet<A, HMAC, SC, ESK, H>
 where
     A: Address,
     HMAC: Hmac,
     SC: StreamCipher,
-    K: KeyPair + DiffieHellman + Blind,
+    ESK: SecretKey + DiffieHellman + Blind,
     H: Hash,
 {
     /// Sphinx packet version.
     pub version: SfynxVersion,
 
     /// Encrypted packet header.
-    pub header: Header<A, HMAC, SC, K, H>,
+    pub header: Header<A, HMAC, SC, ESK, H>,
 
     /// Encrypted payload.
     pub payload: Vec<u8>,
     _hash: PhantomData<H>,
 }
 
-impl<A, HMAC, SC, K, H> Debug for Packet<A, HMAC, SC, K, H>
+impl<A, HMAC, SC, ESK, H> Debug for Packet<A, HMAC, SC, ESK, H>
 where
     A: Address,
     HMAC: Hmac,
     SC: StreamCipher,
-    K: KeyPair + DiffieHellman + Blind,
+    ESK: SecretKey + DiffieHellman + Blind,
     H: Hash,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -54,15 +54,14 @@ where
     }
 }
 
-impl<A, HMAC, SC, K, H> Packet<A, HMAC, SC, K, H>
+impl<A, HMAC, SC, ESK, H> Packet<A, HMAC, SC, ESK, H>
 where
     A: Address,
     HMAC: Hmac + Len,
     SC: StreamCipher,
-    K: KeyPair + DiffieHellman<PK = <K::SK as SecretKey>::PK> + Blind,
-    <K as DiffieHellman>::SSK: ToVec,
-    <<K as KeyPair>::SK as SecretKey>::PK: ToVec + Blind,
-    <K as KeyPair>::SK: ToVec,
+    ESK: SecretKey + DiffieHellman<PK = <ESK as SecretKey>::PK> + Blind + ToVec,
+    <ESK as SecretKey>::PK: Blind + ToVec,
+    <ESK as DiffieHellman>::SSK: ToVec,
     H: Hash,
 {
     /// Creates a new packet to be forwarded to the first relay in the
@@ -72,8 +71,8 @@ where
     /// is then encoded and sent over the wire to the first relay. This is the entry
     /// point function for an initiator to construct a onion circuit.
     pub fn new(
-        session_key: K,
-        circuit_pub_keys: Vec<<K as DiffieHellman>::PK>,
+        session_key: ESK,
+        circuit_pub_keys: Vec<<ESK as DiffieHellman>::PK>,
         routing_info: &[A],
         max_relays: usize,
         dest: A,
@@ -84,9 +83,9 @@ where
         }
 
         let shared_secrets =
-            generate_shared_secrets::<K, H>(&circuit_pub_keys, session_key.clone())?;
+            generate_shared_secrets::<ESK, H>(&circuit_pub_keys, session_key.clone())?;
 
-        let header = Header::<A, HMAC, SC, K, H>::new(
+        let header = Header::<A, HMAC, SC, ESK, H>::new(
             max_relays,
             routing_info,
             &shared_secrets,
@@ -109,7 +108,7 @@ where
     /// traversed the circuit
     fn encrypt_payload(
         payload: &[u8],
-        shared_secrets: &[<K as DiffieHellman>::SSK],
+        shared_secrets: &[<ESK as DiffieHellman>::SSK],
     ) -> Result<Vec<u8>, SfynxError> {
         let mut encrypted_payload = Vec::from(payload);
 
@@ -123,7 +122,7 @@ where
         Ok(encrypted_payload)
     }
 
-    fn decrypt_payload(&self, secret: &<K as DiffieHellman>::SSK) -> Result<Vec<u8>, SfynxError> {
+    fn decrypt_payload(&self, secret: &<ESK as DiffieHellman>::SSK) -> Result<Vec<u8>, SfynxError> {
         let mut decrypted_payload = self.payload.clone();
 
         let cipher =
@@ -135,7 +134,7 @@ where
     }
 
     /// Decrypt upper layer and get underlying payload from the package.
-    pub fn peel(&self, session_key: K) -> Result<(A, Self), SfynxError> {
+    pub fn peel(&self, session_key: ESK) -> Result<(A, Self), SfynxError> {
         let shared_secret = session_key.diffie_hellman(&self.header.public_key);
         let (next_addr, header) = self.header.peel(&shared_secret)?;
 

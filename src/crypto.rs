@@ -2,7 +2,7 @@ use cryptraits::{
     convert::{Len, ToVec},
     hash::Hash,
     hmac::Hmac,
-    key::{Blind, KeyPair, SecretKey, SharedSecretKey},
+    key::{Blind, SecretKey, SharedSecretKey},
     key_exchange::DiffieHellman,
     stream_cipher::StreamCipher,
 };
@@ -36,15 +36,15 @@ pub(crate) fn xor(a: &mut [u8], b: &[u8]) {
 // Computes blinding factor used for blinding the cyclic group element at each
 // hop. The blinding factor is computed by hashing the concatenation of the
 // hop's public key and the secret key derived between the sender and the hop
-pub(crate) fn compute_blinding_factor<K, H>(
-    public: &<K::SK as SecretKey>::PK,
-    shared: &K::SSK,
+pub(crate) fn compute_blinding_factor<ESK, H>(
+    public: &<ESK as SecretKey>::PK,
+    shared: &ESK::SSK,
 ) -> Vec<u8>
 where
-    K: KeyPair + DiffieHellman,
+    ESK: SecretKey + DiffieHellman,
     H: Hash,
-    <K::SK as SecretKey>::PK: ToVec,
-    K::SSK: ToVec,
+    <ESK as SecretKey>::PK: ToVec,
+    ESK::SSK: ToVec,
 {
     let mut hasher = H::new();
 
@@ -54,27 +54,27 @@ where
     hasher.finalize()
 }
 
-pub(crate) fn generate_shared_secrets<K, H>(
-    circuit_pub_keys: &[<K as DiffieHellman>::PK],
-    mut session_key: K,
-) -> Result<Vec<<K as DiffieHellman>::SSK>, SfynxError>
+pub(crate) fn generate_shared_secrets<ESK, H>(
+    circuit_pub_keys: &[<ESK as DiffieHellman>::PK],
+    mut session_key: ESK,
+) -> Result<Vec<<ESK as DiffieHellman>::SSK>, SfynxError>
 where
-    K: KeyPair + DiffieHellman + Blind,
-    <K::SK as SecretKey>::PK: ToVec,
-    K::SSK: ToVec,
-    K::SK: ToVec,
+    ESK: SecretKey + DiffieHellman + Blind + ToVec,
+    <ESK as SecretKey>::PK: ToVec,
+    ESK::SSK: ToVec,
     H: Hash,
 {
     if circuit_pub_keys.is_empty() {
         return Err(SfynxError::EmptyCircuit);
     }
 
-    let mut shared_secrets: Vec<<K as DiffieHellman>::SSK> =
+    let mut shared_secrets: Vec<<ESK as DiffieHellman>::SSK> =
         Vec::with_capacity(circuit_pub_keys.len());
 
     for public in circuit_pub_keys {
         let shared_secret = session_key.diffie_hellman(&public);
-        let blinding_factor = compute_blinding_factor::<K, H>(session_key.public(), &shared_secret);
+        let blinding_factor =
+            compute_blinding_factor::<ESK, H>(&session_key.to_public(), &shared_secret);
 
         session_key
             .blind(&blinding_factor)

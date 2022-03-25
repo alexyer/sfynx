@@ -4,7 +4,7 @@ use cryptraits::{
     convert::{Len, ToVec},
     hash::Hash,
     hmac::Hmac,
-    key::{Blind, KeyPair, SecretKey, SharedSecretKey},
+    key::{Blind, SecretKey, SharedSecretKey},
     key_exchange::DiffieHellman,
     stream_cipher::StreamCipher,
 };
@@ -19,12 +19,12 @@ use crate::{
 };
 
 #[derive(Zeroize)]
-pub struct Header<A, H, SC, K, HASH>
+pub struct Header<A, H, SC, ESK, HASH>
 where
     A: Address,
     H: Hmac,
     SC: StreamCipher,
-    K: KeyPair + DiffieHellman,
+    ESK: SecretKey + DiffieHellman,
     HASH: Hash,
 {
     /// Maximum number of hops per circuit.
@@ -36,7 +36,7 @@ where
     /// HMAC of routing_info.
     pub routing_info_mac: Vec<u8>,
 
-    pub public_key: <K::SK as SecretKey>::PK,
+    pub public_key: <ESK as SecretKey>::PK,
 
     #[zeroize(skip)]
     _a: PhantomData<A>,
@@ -51,12 +51,12 @@ where
     _hash: PhantomData<HASH>,
 }
 
-impl<A, H, SC, K, HASH> Debug for Header<A, H, SC, K, HASH>
+impl<A, H, SC, ESK, HASH> Debug for Header<A, H, SC, ESK, HASH>
 where
     A: Address,
     H: Hmac,
     SC: StreamCipher,
-    K: KeyPair + DiffieHellman,
+    ESK: SecretKey + DiffieHellman,
     HASH: Hash,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -69,12 +69,12 @@ where
     }
 }
 
-impl<A, H, SC, K, HASH> Drop for Header<A, H, SC, K, HASH>
+impl<A, H, SC, ESK, HASH> Drop for Header<A, H, SC, ESK, HASH>
 where
     A: Address,
     H: Hmac,
     SC: StreamCipher,
-    K: KeyPair + DiffieHellman,
+    ESK: SecretKey + DiffieHellman,
     HASH: Hash,
 {
     fn drop(&mut self) {
@@ -82,23 +82,23 @@ where
     }
 }
 
-impl<A, H, SC, K, HASH> Header<A, H, SC, K, HASH>
+impl<A, H, SC, ESK, HASH> Header<A, H, SC, ESK, HASH>
 where
     A: Address,
     H: Hmac + Len,
     SC: StreamCipher,
-    K: KeyPair + DiffieHellman<PK = <K::SK as SecretKey>::PK> + Blind,
+    ESK: SecretKey + DiffieHellman<PK = <ESK as SecretKey>::PK> + Blind,
+    <ESK as DiffieHellman>::SSK: ToVec,
+    <ESK as SecretKey>::PK: Blind + ToVec,
     HASH: Hash,
-    <<K as KeyPair>::SK as SecretKey>::PK: ToVec + Blind,
-    <K as DiffieHellman>::SSK: ToVec,
 {
     pub fn new(
         max_relays: usize,
         routing_info: &[A],
         shared_secrets: &[impl SharedSecretKey + ToVec],
         dest: impl Address,
-        session_key: K,
-    ) -> Result<Header<A, H, SC, K, HASH>, SfynxError> {
+        session_key: ESK,
+    ) -> Result<Header<A, H, SC, ESK, HASH>, SfynxError> {
         Self::validate_header_input(max_relays, routing_info)?;
 
         let relay_data_size: usize = A::LEN + H::LEN;
@@ -166,7 +166,10 @@ where
     }
 
     /// Process header.
-    pub fn peel(&self, shared_secret: &<K as DiffieHellman>::SSK) -> Result<(A, Self), SfynxError> {
+    pub fn peel(
+        &self,
+        shared_secret: &<ESK as DiffieHellman>::SSK,
+    ) -> Result<(A, Self), SfynxError> {
         let relay_data_size: usize = A::LEN + H::LEN;
         let routing_info_size: usize = self.max_relays * relay_data_size;
         let stream_size = routing_info_size + relay_data_size;
@@ -192,7 +195,8 @@ where
         let next_routing_info_mac = Vec::from(&routing_info[A::LEN..relay_data_size]);
         let next_routing_info = Vec::from(&routing_info[relay_data_size..]);
 
-        let blinding_factor = compute_blinding_factor::<K, HASH>(&self.public_key, &shared_secret);
+        let blinding_factor =
+            compute_blinding_factor::<ESK, HASH>(&self.public_key, &shared_secret);
 
         let new_public_key = self
             .public_key
@@ -219,7 +223,7 @@ mod tests {
     use cryptimitives::{hash::sha256, hmac, key::x25519_ristretto, stream_cipher::chacha20};
     use cryptraits::{
         convert::Len,
-        key::{Generate, KeyPair},
+        key::{Generate, SecretKey},
     };
 
     use crate::{crypto::generate_shared_secrets, header::Header, Address};
@@ -266,25 +270,26 @@ mod tests {
         let mut circuit_keypairs = Vec::new();
 
         for _ in 0..num_relays {
-            circuit_keypairs.push(x25519_ristretto::KeyPair::generate());
+            circuit_keypairs.push(x25519_ristretto::EphemeralSecretKey::generate());
         }
 
-        let session_key = x25519_ristretto::KeyPair::generate();
+        let session_key = x25519_ristretto::EphemeralSecretKey::generate();
 
-        let shared_secrets = generate_shared_secrets::<x25519_ristretto::KeyPair, sha256::Hash>(
-            &circuit_keypairs
-                .iter()
-                .map(|k| k.to_public())
-                .collect::<Vec<x25519_ristretto::PublicKey>>(),
-            session_key.clone(),
-        )
-        .unwrap();
+        let shared_secrets =
+            generate_shared_secrets::<x25519_ristretto::EphemeralSecretKey, sha256::Hash>(
+                &circuit_keypairs
+                    .iter()
+                    .map(|k| k.to_public())
+                    .collect::<Vec<x25519_ristretto::EphemeralPublicKey>>(),
+                session_key.clone(),
+            )
+            .unwrap();
 
         let header = Header::<
             TestAddress,
             hmac::sha256::Hmac,
             chacha20::StreamCipher,
-            x25519_ristretto::KeyPair,
+            x25519_ristretto::EphemeralSecretKey,
             sha256::Hash,
         >::new(num_relays, &relay_addrs, &shared_secrets, dest, session_key)
         .unwrap();

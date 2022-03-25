@@ -1,7 +1,7 @@
 [package]
 name = "sfynx"
 license = "MIT"
-version = "0.2.1"
+version = "0.3.0"
 edition = "2021"
 authors = ["Oleksandr Yermakov <olexander.yermakov@gmail.com>"]
 categories = ["cryptography"]
@@ -12,7 +12,7 @@ description = "General-purpose onion routing packet construction and processor b
 
 [dependencies]
 bip39 = "1.0.1"
-cryptimitives = { version = "0.16.0", default-features = false }
+cryptimitives = { version = "0.16.1", default-features = false }
 cryptraits = "0.10.0"
 getrandom = "0.2.3"
 zeroize = "1.5.2"
