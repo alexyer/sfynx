@@ -72,13 +72,13 @@ where
         Vec::with_capacity(circuit_pub_keys.len());
 
     for public in circuit_pub_keys {
-        let shared_secret = session_key.diffie_hellman(&public);
+        let shared_secret = session_key.diffie_hellman(public);
         let blinding_factor =
             compute_blinding_factor::<ESK, H>(&session_key.to_public(), &shared_secret);
 
         session_key
             .blind(&blinding_factor)
-            .or_else(|e| Err(SfynxError::KeyPairError(format!("{:?}", e))))?;
+            .map_err(|e| SfynxError::KeyPairError(format!("{:?}", e)))?;
 
         shared_secrets.push(shared_secret);
     }
@@ -99,7 +99,7 @@ where
     let mut padding = Vec::new();
 
     let shared_secrets_num = shared_secrets.len();
-    for key in shared_secrets.into_iter().take(shared_secrets_num - 1) {
+    for key in shared_secrets.iter().take(shared_secrets_num - 1) {
         padding.extend(vec![0; addr_size + H::LEN]);
         let key = generate_encryption_key::<H>(&key.to_vec(), ENCRYPTION);
         let cipher = generate_cipher_stream::<SC>(

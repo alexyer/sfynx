@@ -4,7 +4,7 @@ use cryptraits::{
     convert::{Len, ToVec},
     hash::Hash,
     hmac::Hmac,
-    key::{Blind, SecretKey, SharedSecretKey},
+    key::{Blind, SecretKey},
     key_exchange::DiffieHellman,
     stream_cipher::StreamCipher,
 };
@@ -13,7 +13,7 @@ use zeroize::Zeroize;
 use crate::{
     crypto::{
         compute_blinding_factor, compute_mac, generate_cipher_stream, generate_encryption_key,
-        generate_padding, xor,
+        generate_padding, generate_shared_secrets, xor,
     },
     Address, SfynxError, ENCRYPTION, HASH,
 };
@@ -29,6 +29,9 @@ where
 {
     /// Maximum number of hops per circuit.
     max_relays: usize,
+
+    /// List of secrets shared with the other nodes in the circuit.
+    shared_secrets: Vec<<ESK as DiffieHellman>::SSK>,
 
     /// Routing table for the header.
     pub routing_info: Vec<u8>,
@@ -87,7 +90,7 @@ where
     A: Address,
     H: Hmac + Len,
     SC: StreamCipher,
-    ESK: SecretKey + DiffieHellman<PK = <ESK as SecretKey>::PK> + Blind,
+    ESK: SecretKey + DiffieHellman<PK = <ESK as SecretKey>::PK> + Blind + ToVec,
     <ESK as DiffieHellman>::SSK: ToVec,
     <ESK as SecretKey>::PK: Blind + ToVec,
     HASH: Hash,
@@ -95,9 +98,22 @@ where
     pub fn new(
         max_relays: usize,
         routing_info: &[A],
-        shared_secrets: &[impl SharedSecretKey + ToVec],
         dest: impl Address,
         session_key: ESK,
+        circuit_pub_keys: Vec<<ESK as DiffieHellman>::PK>,
+    ) -> Result<Header<A, H, SC, ESK, HASH>, SfynxError> {
+        let shared_secrets =
+            generate_shared_secrets::<ESK, HASH>(&circuit_pub_keys, session_key.clone())?;
+
+        Self::with_shared_secrets(max_relays, routing_info, dest, session_key, &shared_secrets)
+    }
+
+    pub fn with_shared_secrets(
+        max_relays: usize,
+        routing_info: &[A],
+        dest: impl Address,
+        session_key: ESK,
+        shared_secrets: &[<ESK as DiffieHellman>::SSK],
     ) -> Result<Header<A, H, SC, ESK, HASH>, SfynxError> {
         Self::validate_header_input(max_relays, routing_info)?;
 
@@ -105,8 +121,8 @@ where
         let routing_info_size: usize = max_relays * relay_data_size;
         let stream_size = routing_info_size + relay_data_size;
 
-        let padding = generate_padding::<H, SC>(A::LEN, max_relays, &shared_secrets, &vec![0; 12])
-            .or_else(|e| Err(SfynxError::StreamCipherError(format!("{:?}", e))))?;
+        let padding = generate_padding::<H, SC>(A::LEN, max_relays, shared_secrets, &[0; 12])
+            .map_err(|e| SfynxError::StreamCipherError(format!("{:?}", e)))?;
 
         let mut routing_info_bytes = vec![0; routing_info_size];
 
@@ -126,8 +142,8 @@ where
             routing_info_bytes[..A::LEN].copy_from_slice(&dest);
             routing_info_bytes[A::LEN..relay_data_size].copy_from_slice(&routing_info_mac);
 
-            let cipher = generate_cipher_stream::<SC>(&enc_key, &vec![0; 12], stream_size)
-                .or_else(|e| Err(SfynxError::StreamCipherError(format!("{:?}", e))))?;
+            let cipher = generate_cipher_stream::<SC>(&enc_key, &[0; 12], stream_size)
+                .map_err(|e| SfynxError::StreamCipherError(format!("{:?}", e)))?;
 
             xor(&mut routing_info_bytes, &cipher[..routing_info_size]);
 
@@ -146,11 +162,16 @@ where
             routing_info: routing_info_bytes.to_vec(),
             routing_info_mac,
             public_key: session_key.to_public(),
+            shared_secrets: shared_secrets.to_vec(),
             _a: Default::default(),
             _h: Default::default(),
             _sc: Default::default(),
             _hash: Default::default(),
         })
+    }
+
+    pub fn get_shared_secrets(&self) -> &[<ESK as DiffieHellman>::SSK] {
+        &self.shared_secrets
     }
 
     /// Validate header input data. Panics if data is incorrect.
@@ -186,8 +207,8 @@ where
         let mut routing_info = self.routing_info.clone();
         routing_info.extend(vec![0; H::LEN + A::LEN]);
 
-        let cipher = generate_cipher_stream::<SC>(&enc_key.to_vec(), &vec![0; 12], stream_size)
-            .or_else(|e| Err(SfynxError::StreamCipherError(format!("{:?}", e))))?;
+        let cipher = generate_cipher_stream::<SC>(&enc_key.to_vec(), &[0; 12], stream_size)
+            .map_err(|e| SfynxError::StreamCipherError(format!("{:?}", e)))?;
 
         xor(&mut routing_info[..stream_size], &cipher);
 
@@ -195,19 +216,19 @@ where
         let next_routing_info_mac = Vec::from(&routing_info[A::LEN..relay_data_size]);
         let next_routing_info = Vec::from(&routing_info[relay_data_size..]);
 
-        let blinding_factor =
-            compute_blinding_factor::<ESK, HASH>(&self.public_key, &shared_secret);
+        let blinding_factor = compute_blinding_factor::<ESK, HASH>(&self.public_key, shared_secret);
 
         let new_public_key = self
             .public_key
             .to_blind(&blinding_factor)
-            .or_else(|e| Err(SfynxError::KeyPairError(format!("{:?}", e))))?;
+            .map_err(|e| SfynxError::KeyPairError(format!("{:?}", e)))?;
 
         let next_header = Self {
             max_relays: self.max_relays,
             routing_info: next_routing_info,
             routing_info_mac: next_routing_info_mac,
             public_key: new_public_key,
+            shared_secrets: self.shared_secrets.clone(),
             _a: Default::default(),
             _h: Default::default(),
             _sc: Default::default(),
@@ -222,7 +243,7 @@ where
 mod tests {
     use cryptimitives::{hash::sha256, hmac, key::x25519_ristretto, stream_cipher::chacha20};
     use cryptraits::{
-        convert::Len,
+        convert::{Len, ToVec},
         key::{Generate, SecretKey},
     };
 
@@ -291,7 +312,9 @@ mod tests {
             chacha20::StreamCipher,
             x25519_ristretto::EphemeralSecretKey,
             sha256::Hash,
-        >::new(num_relays, &relay_addrs, &shared_secrets, dest, session_key)
+        >::with_shared_secrets(
+            num_relays, &relay_addrs, dest, session_key, &shared_secrets
+        )
         .unwrap();
 
         // checks if there are suffixed zeros in the padding
@@ -309,6 +332,74 @@ mod tests {
             count <= 2,
             "Header is revealing number of relays. Suffixed 0s count: {}",
             count
+        );
+    }
+
+    #[test]
+    fn test_get_shared_secrets() {
+        let num_relays = 4;
+        let dest = TestAddress(String::from(
+            "QmZrXVN6xNkXYqFharGfjG6CjdE3X85werKm8AyMdqsQKS",
+        ));
+
+        let routing_info = vec![
+            TestAddress(String::from(
+                "/ip4/127.0.0.1/udp/1234#0000000000000000000000",
+            )),
+            TestAddress(String::from(
+                "QmSFXZRzh6ZdpWXXQQ2mkYtx3ns39ZPtWgQJ7sSqStiHZH",
+            )),
+            TestAddress(String::from(
+                "/ip6/2607:f8b0:4003:c00::6a/udp/5678#000000000",
+            )),
+            TestAddress(String::from(
+                "/ip4/198.162.0.2/tcp/4321#00000000000000000000",
+            )),
+        ];
+
+        let mut circuit_keypairs = Vec::new();
+
+        for _ in 0..num_relays {
+            circuit_keypairs.push(x25519_ristretto::EphemeralSecretKey::generate());
+        }
+
+        let session_key = x25519_ristretto::EphemeralSecretKey::generate();
+
+        let shared_secrets =
+            generate_shared_secrets::<x25519_ristretto::EphemeralSecretKey, sha256::Hash>(
+                &circuit_keypairs
+                    .iter()
+                    .map(|k| k.to_public())
+                    .collect::<Vec<x25519_ristretto::EphemeralPublicKey>>(),
+                session_key.clone(),
+            )
+            .unwrap();
+
+        let header = Header::<
+            TestAddress,
+            hmac::sha256::Hmac,
+            chacha20::StreamCipher,
+            x25519_ristretto::EphemeralSecretKey,
+            sha256::Hash,
+        >::with_shared_secrets(
+            num_relays,
+            &routing_info,
+            dest,
+            session_key,
+            &shared_secrets,
+        )
+        .unwrap();
+
+        assert_eq!(
+            header
+                .get_shared_secrets()
+                .iter()
+                .map(|s| s.to_vec())
+                .collect::<Vec<Vec<u8>>>(),
+            shared_secrets
+                .iter()
+                .map(|s| s.to_vec())
+                .collect::<Vec<Vec<u8>>>()
         );
     }
 }

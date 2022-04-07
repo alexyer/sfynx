@@ -85,12 +85,12 @@ where
         let shared_secrets =
             generate_shared_secrets::<ESK, H>(&circuit_pub_keys, session_key.clone())?;
 
-        let header = Header::<A, HMAC, SC, ESK, H>::new(
+        let header = Header::<A, HMAC, SC, ESK, H>::with_shared_secrets(
             max_relays,
             routing_info,
-            &shared_secrets,
             dest,
-            session_key.clone(),
+            session_key,
+            &shared_secrets,
         )?;
 
         let payload = Self::encrypt_payload(payload, &shared_secrets)?;
@@ -112,10 +112,9 @@ where
     ) -> Result<Vec<u8>, SfynxError> {
         let mut encrypted_payload = Vec::from(payload);
 
-        for secret in shared_secrets.into_iter().rev() {
-            let cipher =
-                generate_cipher_stream::<SC>(&secret.to_vec(), &vec![0; 12], payload.len())
-                    .or_else(|e| Err(SfynxError::StreamCipherError(format!("{:?}", e))))?;
+        for secret in shared_secrets.iter().rev() {
+            let cipher = generate_cipher_stream::<SC>(&secret.to_vec(), &[0; 12], payload.len())
+                .map_err(|e| SfynxError::StreamCipherError(format!("{:?}", e)))?;
             xor(&mut encrypted_payload, &cipher);
         }
 
@@ -126,8 +125,8 @@ where
         let mut decrypted_payload = self.payload.clone();
 
         let cipher =
-            generate_cipher_stream::<SC>(&secret.to_vec(), &vec![0; 12], decrypted_payload.len())
-                .or_else(|e| Err(SfynxError::StreamCipherError(format!("{:?}", e))))?;
+            generate_cipher_stream::<SC>(&secret.to_vec(), &[0; 12], decrypted_payload.len())
+                .map_err(|e| SfynxError::StreamCipherError(format!("{:?}", e)))?;
         xor(&mut decrypted_payload, &cipher);
 
         Ok(decrypted_payload)
