@@ -118,14 +118,14 @@ mod tests {
                 "Payload was not successfully ENCRYPTED"
             );
 
-            let (addr, packet) = new_packet.peel(keypair.clone()).unwrap();
+            let (_, addr, packet) = new_packet.peel(keypair.clone()).unwrap();
             next_addr = Some(addr);
             new_packet = packet;
         }
 
         assert_eq!(next_addr, Some(dest));
 
-        let (_, final_packet) = new_packet
+        let (_, _, final_packet) = new_packet
             .peel(circuit_keypairs.last().unwrap().clone())
             .unwrap();
 

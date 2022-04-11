@@ -133,13 +133,17 @@ where
     }
 
     /// Decrypt upper layer and get underlying payload from the package.
-    pub fn peel(&self, session_key: ESK) -> Result<(A, Self), SfynxError> {
+    pub fn peel(
+        &self,
+        session_key: ESK,
+    ) -> Result<(<ESK as DiffieHellman>::SSK, A, Self), SfynxError> {
         let shared_secret = session_key.diffie_hellman(&self.header.public_key);
         let (next_addr, header) = self.header.peel(&shared_secret)?;
 
         let payload = self.decrypt_payload(&shared_secret)?;
 
         Ok((
+            shared_secret,
             next_addr,
             Self {
                 version: VERSION,
