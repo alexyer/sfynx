@@ -3,7 +3,7 @@
 use std::{fmt::Debug, marker::PhantomData};
 
 use cryptraits::{
-    convert::{Len, ToVec},
+    convert::{FromBytes, Len, ToVec},
     hash::Hash,
     hmac::Hmac,
     key::{Blind, SecretKey},
@@ -60,7 +60,7 @@ where
     HMAC: Hmac + Len,
     SC: StreamCipher,
     ESK: SecretKey + DiffieHellman<PK = <ESK as SecretKey>::PK> + Blind + ToVec,
-    <ESK as SecretKey>::PK: Blind + ToVec,
+    <ESK as SecretKey>::PK: Blind + ToVec + FromBytes,
     <ESK as DiffieHellman>::SSK: ToVec,
     H: Hash,
 {

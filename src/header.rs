@@ -1,7 +1,7 @@
 use std::{fmt::Debug, marker::PhantomData};
 
 use cryptraits::{
-    convert::{Len, ToVec},
+    convert::{FromBytes, Len, ToVec},
     hash::Hash,
     hmac::Hmac,
     key::{Blind, SecretKey},
@@ -88,7 +88,7 @@ where
     SC: StreamCipher,
     ESK: SecretKey + DiffieHellman<PK = <ESK as SecretKey>::PK> + Blind + ToVec,
     <ESK as DiffieHellman>::SSK: ToVec,
-    <ESK as SecretKey>::PK: Blind + ToVec,
+    <ESK as SecretKey>::PK: Blind + ToVec + FromBytes,
     HASH: Hash,
 {
     pub fn new(
@@ -176,6 +176,27 @@ where
                 _hash: Default::default(),
             },
         ))
+    }
+
+    pub fn from_bytes(bytes: impl AsRef<[u8]>, max_relays: usize) -> Result<Self, SfynxError> {
+        let routing_info = Vec::from(&bytes.as_ref()[..max_relays * A::LEN]);
+        let routing_info_mac = Vec::from(
+            &bytes.as_ref()[max_relays * A::LEN..max_relays * A::LEN + max_relays * H::LEN],
+        );
+        let public_key =
+            <ESK as SecretKey>::PK::from_bytes(&bytes.as_ref()[max_relays * (A::LEN + H::LEN)..])
+                .map_err(|e| SfynxError::KeyPairError(format!("{:?}", e)))?;
+
+        Ok(Self {
+            max_relays,
+            routing_info,
+            routing_info_mac,
+            public_key,
+            _a: Default::default(),
+            _h: Default::default(),
+            _sc: Default::default(),
+            _hash: Default::default(),
+        })
     }
 
     /// Validate header input data. Panics if data is incorrect.
@@ -391,5 +412,29 @@ mod tests {
                 .map(|s| s.to_vec())
                 .collect::<Vec<Vec<u8>>>()
         );
+    }
+
+    #[test]
+    fn test_header_from_bytes() {
+        const MAX_RELAYS: usize = 4;
+        let routing_info = [0u8; MAX_RELAYS * TestAddress::LEN];
+        let routing_info_mac = [0u8; MAX_RELAYS * hmac::sha256::Hmac::LEN];
+        let public_key_bytes = x25519_ristretto::EphemeralSecretKey::generate()
+            .to_public()
+            .to_vec();
+
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&routing_info);
+        bytes.extend_from_slice(&routing_info_mac);
+        bytes.extend_from_slice(&public_key_bytes);
+
+        assert!(Header::<
+            TestAddress,
+            hmac::sha256::Hmac,
+            chacha20::StreamCipher,
+            x25519_ristretto::EphemeralSecretKey,
+            sha256::Hash,
+        >::from_bytes(bytes, MAX_RELAYS)
+        .is_ok());
     }
 }
