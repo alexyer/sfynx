@@ -75,7 +75,6 @@ where
         circuit_pub_keys: Vec<<ESK as DiffieHellman>::PK>,
         routing_info: &[A],
         max_relays: usize,
-        dest: A,
         payload: &[u8],
     ) -> Result<Self, SfynxError> {
         if circuit_pub_keys.is_empty() {
@@ -88,7 +87,6 @@ where
         let header = Header::<A, HMAC, SC, ESK, H>::with_shared_secrets(
             max_relays,
             routing_info,
-            dest,
             session_key,
             &shared_secrets,
         )?;

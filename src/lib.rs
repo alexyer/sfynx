@@ -100,7 +100,6 @@ mod tests {
                 circuit_pub_keys,
                 &routing_info,
                 max_relays,
-                dest.clone(),
                 &payload,
             )
             .unwrap();
