@@ -94,7 +94,7 @@ mod tests {
         let mut payload = [0; 256];
         payload[..13].copy_from_slice(b"Hello, Sfynx!");
 
-        let mut new_packet =
+        let (_, mut new_packet) =
             Packet::<_, hmac::sha256::Hmac, chacha20::StreamCipher, _, hash::sha256::Hash>::new(
                 session_key,
                 circuit_pub_keys,

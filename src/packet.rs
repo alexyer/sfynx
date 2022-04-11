@@ -76,29 +76,50 @@ where
         routing_info: &[A],
         max_relays: usize,
         payload: &[u8],
-    ) -> Result<Self, SfynxError> {
+    ) -> Result<(Vec<<ESK as DiffieHellman>::SSK>, Self), SfynxError> {
+        let shared_secrets =
+            generate_shared_secrets::<ESK, H>(&circuit_pub_keys, session_key.clone())?;
+
+        Self::with_shared_secrets(
+            session_key,
+            circuit_pub_keys,
+            routing_info,
+            max_relays,
+            payload,
+            &shared_secrets,
+        )
+    }
+
+    pub fn with_shared_secrets(
+        session_key: ESK,
+        circuit_pub_keys: Vec<<ESK as DiffieHellman>::PK>,
+        routing_info: &[A],
+        max_relays: usize,
+        payload: &[u8],
+        shared_secrets: &[<ESK as DiffieHellman>::SSK],
+    ) -> Result<(Vec<<ESK as DiffieHellman>::SSK>, Self), SfynxError> {
         if circuit_pub_keys.is_empty() {
             return Err(SfynxError::EmptyCircuit);
         }
 
-        let shared_secrets =
-            generate_shared_secrets::<ESK, H>(&circuit_pub_keys, session_key.clone())?;
-
-        let header = Header::<A, HMAC, SC, ESK, H>::with_shared_secrets(
+        let (_, header) = Header::<A, HMAC, SC, ESK, H>::with_shared_secrets(
             max_relays,
             routing_info,
             session_key,
-            &shared_secrets,
+            shared_secrets,
         )?;
 
-        let payload = Self::encrypt_payload(payload, &shared_secrets)?;
+        let payload = Self::encrypt_payload(payload, shared_secrets)?;
 
-        Ok(Self {
-            version: VERSION,
-            header,
-            payload,
-            _hash: Default::default(),
-        })
+        Ok((
+            shared_secrets.to_vec(),
+            Self {
+                version: VERSION,
+                header,
+                payload,
+                _hash: Default::default(),
+            },
+        ))
     }
 
     /// Encrypts packet payload in multiple layers using the shared secrets derived

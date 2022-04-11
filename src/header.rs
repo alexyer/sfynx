@@ -30,9 +30,6 @@ where
     /// Maximum number of hops per circuit.
     max_relays: usize,
 
-    /// List of secrets shared with the other nodes in the circuit.
-    shared_secrets: Vec<<ESK as DiffieHellman>::SSK>,
-
     /// Routing table for the header.
     pub routing_info: Vec<u8>,
 
@@ -64,7 +61,6 @@ where
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Header")
-            .field("max_relays", &self.max_relays)
             .field("routing_info", &self.routing_info)
             .field("routing_info_mac", &self.routing_info_mac)
             .field("public_key", &self.public_key)
@@ -100,7 +96,13 @@ where
         routing_info: &[A],
         session_key: ESK,
         circuit_pub_keys: Vec<<ESK as DiffieHellman>::PK>,
-    ) -> Result<Header<A, H, SC, ESK, HASH>, SfynxError> {
+    ) -> Result<
+        (
+            Vec<<ESK as DiffieHellman>::SSK>,
+            Header<A, H, SC, ESK, HASH>,
+        ),
+        SfynxError,
+    > {
         let shared_secrets =
             generate_shared_secrets::<ESK, HASH>(&circuit_pub_keys, session_key.clone())?;
 
@@ -112,7 +114,13 @@ where
         routing_info: &[A],
         session_key: ESK,
         shared_secrets: &[<ESK as DiffieHellman>::SSK],
-    ) -> Result<Header<A, H, SC, ESK, HASH>, SfynxError> {
+    ) -> Result<
+        (
+            Vec<<ESK as DiffieHellman>::SSK>,
+            Header<A, H, SC, ESK, HASH>,
+        ),
+        SfynxError,
+    > {
         Self::validate_header_input(max_relays, routing_info)?;
 
         let relay_data_size: usize = A::LEN + H::LEN;
@@ -155,21 +163,19 @@ where
             dest = addr.to_vec();
         }
 
-        Ok(Header {
-            max_relays,
-            routing_info: routing_info_bytes.to_vec(),
-            routing_info_mac,
-            public_key: session_key.to_public(),
-            shared_secrets: shared_secrets.to_vec(),
-            _a: Default::default(),
-            _h: Default::default(),
-            _sc: Default::default(),
-            _hash: Default::default(),
-        })
-    }
-
-    pub fn get_shared_secrets(&self) -> &[<ESK as DiffieHellman>::SSK] {
-        &self.shared_secrets
+        Ok((
+            shared_secrets.to_vec(),
+            Header {
+                max_relays,
+                routing_info: routing_info_bytes.to_vec(),
+                routing_info_mac,
+                public_key: session_key.to_public(),
+                _a: Default::default(),
+                _h: Default::default(),
+                _sc: Default::default(),
+                _hash: Default::default(),
+            },
+        ))
     }
 
     /// Validate header input data. Panics if data is incorrect.
@@ -226,7 +232,7 @@ where
             routing_info: next_routing_info,
             routing_info_mac: next_routing_info_mac,
             public_key: new_public_key,
-            shared_secrets: self.shared_secrets.clone(),
+            // shared_secrets: self.shared_secrets.clone(),
             _a: Default::default(),
             _h: Default::default(),
             _sc: Default::default(),
@@ -301,7 +307,7 @@ mod tests {
             )
             .unwrap();
 
-        let header = Header::<
+        let (_, header) = Header::<
             TestAddress,
             hmac::sha256::Hmac,
             chacha20::StreamCipher,
@@ -331,7 +337,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_shared_secrets() {
+    fn test_return_shared_secrets() {
         let num_relays = 4;
 
         let routing_info = vec![
@@ -367,7 +373,7 @@ mod tests {
             )
             .unwrap();
 
-        let header = Header::<
+        let (secrets, _) = Header::<
             TestAddress,
             hmac::sha256::Hmac,
             chacha20::StreamCipher,
@@ -379,11 +385,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            header
-                .get_shared_secrets()
-                .iter()
-                .map(|s| s.to_vec())
-                .collect::<Vec<Vec<u8>>>(),
+            secrets.iter().map(|s| s.to_vec()).collect::<Vec<Vec<u8>>>(),
             shared_secrets
                 .iter()
                 .map(|s| s.to_vec())
