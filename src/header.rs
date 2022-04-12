@@ -179,13 +179,15 @@ where
     }
 
     pub fn from_bytes(bytes: impl AsRef<[u8]>, max_relays: usize) -> Result<Self, SfynxError> {
-        let routing_info = Vec::from(&bytes.as_ref()[..max_relays * A::LEN]);
+        let routing_info = Vec::from(&bytes.as_ref()[..max_relays * (A::LEN + H::LEN)]);
         let routing_info_mac = Vec::from(
-            &bytes.as_ref()[max_relays * A::LEN..max_relays * A::LEN + max_relays * H::LEN],
+            &bytes.as_ref()
+                [max_relays * (A::LEN + H::LEN)..max_relays * (A::LEN + H::LEN) + H::LEN],
         );
-        let public_key =
-            <ESK as SecretKey>::PK::from_bytes(&bytes.as_ref()[max_relays * (A::LEN + H::LEN)..])
-                .map_err(|e| SfynxError::KeyPairError(format!("{:?}", e)))?;
+        let public_key = <ESK as SecretKey>::PK::from_bytes(
+            &bytes.as_ref()[max_relays * (A::LEN + H::LEN) + H::LEN..],
+        )
+        .map_err(|e| SfynxError::KeyPairError(format!("{:?}", e)))?;
 
         Ok(Self {
             max_relays,
@@ -197,6 +199,15 @@ where
             _sc: Default::default(),
             _hash: Default::default(),
         })
+    }
+
+    pub fn to_vec(&self) -> Result<Vec<u8>, SfynxError> {
+        let mut bytes = Vec::new();
+        bytes.extend(&self.routing_info);
+        bytes.extend(&self.routing_info_mac);
+        bytes.extend(&self.public_key.to_vec());
+
+        Ok(bytes)
     }
 
     /// Validate header input data. Panics if data is incorrect.
@@ -253,7 +264,6 @@ where
             routing_info: next_routing_info,
             routing_info_mac: next_routing_info_mac,
             public_key: new_public_key,
-            // shared_secrets: self.shared_secrets.clone(),
             _a: Default::default(),
             _h: Default::default(),
             _sc: Default::default(),
@@ -416,25 +426,64 @@ mod tests {
 
     #[test]
     fn test_header_from_bytes() {
-        const MAX_RELAYS: usize = 4;
-        let routing_info = [0u8; MAX_RELAYS * TestAddress::LEN];
-        let routing_info_mac = [0u8; MAX_RELAYS * hmac::sha256::Hmac::LEN];
-        let public_key_bytes = x25519_ristretto::EphemeralSecretKey::generate()
-            .to_public()
-            .to_vec();
+        let num_relays = 4;
 
-        let mut bytes = Vec::new();
-        bytes.extend_from_slice(&routing_info);
-        bytes.extend_from_slice(&routing_info_mac);
-        bytes.extend_from_slice(&public_key_bytes);
+        let routing_info = vec![
+            TestAddress(String::from(
+                "/ip4/127.0.0.1/udp/1234#0000000000000000000000",
+            )),
+            TestAddress(String::from(
+                "QmSFXZRzh6ZdpWXXQQ2mkYtx3ns39ZPtWgQJ7sSqStiHZH",
+            )),
+            TestAddress(String::from(
+                "/ip6/2607:f8b0:4003:c00::6a/udp/5678#000000000",
+            )),
+            TestAddress(String::from(
+                "/ip4/198.162.0.2/tcp/4321#00000000000000000000",
+            )),
+        ];
 
-        assert!(Header::<
+        let mut circuit_keypairs = Vec::new();
+
+        for _ in 0..num_relays {
+            circuit_keypairs.push(x25519_ristretto::EphemeralSecretKey::generate());
+        }
+
+        let session_key = x25519_ristretto::EphemeralSecretKey::generate();
+
+        let shared_secrets =
+            generate_shared_secrets::<x25519_ristretto::EphemeralSecretKey, sha256::Hash>(
+                &circuit_keypairs
+                    .iter()
+                    .map(|k| k.to_public())
+                    .collect::<Vec<x25519_ristretto::EphemeralPublicKey>>(),
+                session_key.clone(),
+            )
+            .unwrap();
+
+        let (_, header) = Header::<
             TestAddress,
             hmac::sha256::Hmac,
             chacha20::StreamCipher,
             x25519_ristretto::EphemeralSecretKey,
             sha256::Hash,
-        >::from_bytes(bytes, MAX_RELAYS)
-        .is_ok());
+        >::with_shared_secrets(
+            num_relays, &routing_info, session_key, &shared_secrets
+        )
+        .unwrap();
+
+        let bytes = header.to_vec().unwrap();
+        let header_from_bytes = Header::<
+            TestAddress,
+            hmac::sha256::Hmac,
+            chacha20::StreamCipher,
+            x25519_ristretto::EphemeralSecretKey,
+            sha256::Hash,
+        >::from_bytes(&bytes, 4)
+        .unwrap();
+
+        assert_eq!(header_from_bytes.routing_info, header.routing_info);
+        assert_eq!(header_from_bytes.routing_info_mac, header.routing_info_mac);
+        assert_eq!(header_from_bytes.public_key, header.public_key);
     }
 }
