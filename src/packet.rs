@@ -148,9 +148,7 @@ where
         let mut encrypted_payload = Vec::from(payload);
 
         for secret in shared_secrets.iter().rev() {
-            let cipher = generate_cipher_stream::<SC>(&secret.to_vec(), &[0; 12], payload.len())
-                .map_err(|e| SfynxError::StreamCipherError(format!("{:?}", e)))?;
-            xor(&mut encrypted_payload, &cipher);
+            Self::wrap(&mut encrypted_payload, secret)?;
         }
 
         Ok(encrypted_payload)
@@ -165,6 +163,18 @@ where
         xor(&mut decrypted_payload, &cipher);
 
         Ok(decrypted_payload)
+    }
+
+    /// Wrap payload in an onion encryption layer in-place.
+    pub fn wrap(
+        payload: &mut [u8],
+        secret: &<ESK as DiffieHellman>::SSK,
+    ) -> Result<(), SfynxError> {
+        let cipher = generate_cipher_stream::<SC>(&secret.to_vec(), &[0; 12], payload.len())
+            .map_err(|e| SfynxError::StreamCipherError(format!("{:?}", e)))?;
+        xor(payload, &cipher);
+
+        Ok(())
     }
 
     /// Decrypt upper layer and get underlying payload from the package.
