@@ -122,6 +122,22 @@ where
         ))
     }
 
+    pub fn from_bytes(
+        header_bytes: impl AsRef<[u8]>,
+        payload_bytes: impl AsRef<[u8]>,
+        max_relays: usize,
+    ) -> Result<Self, SfynxError> {
+        let header = Header::from_bytes(header_bytes, max_relays)?;
+        let payload = Vec::from(payload_bytes.as_ref());
+
+        Ok(Self {
+            version: VERSION,
+            header,
+            payload,
+            _hash: Default::default(),
+        })
+    }
+
     /// Encrypts packet payload in multiple layers using the shared secrets derived
     /// from the relayers' public keys. the payload will be "peeled" as the packet
     /// traversed the circuit
