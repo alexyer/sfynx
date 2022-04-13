@@ -94,6 +94,7 @@ where
     pub fn new(
         max_relays: usize,
         routing_info: &[A],
+        dest: impl Address,
         session_key: ESK,
         circuit_pub_keys: Vec<<ESK as DiffieHellman>::PK>,
     ) -> Result<
@@ -106,12 +107,13 @@ where
         let shared_secrets =
             generate_shared_secrets::<ESK, HASH>(&circuit_pub_keys, session_key.clone())?;
 
-        Self::with_shared_secrets(max_relays, routing_info, session_key, &shared_secrets)
+        Self::with_shared_secrets(max_relays, routing_info, dest, session_key, &shared_secrets)
     }
 
     pub fn with_shared_secrets(
         max_relays: usize,
         routing_info: &[A],
+        dest: impl Address,
         session_key: ESK,
         shared_secrets: &[<ESK as DiffieHellman>::SSK],
     ) -> Result<
@@ -134,7 +136,7 @@ where
 
         routing_info_bytes[routing_info_size - padding.len()..].copy_from_slice(&padding);
 
-        let mut dest = routing_info.last().unwrap().to_vec();
+        let mut dest = dest.to_vec();
         let mut routing_info_mac = vec![0; H::LEN];
 
         for (addr, shared_secret) in routing_info.iter().zip(shared_secrets).rev() {
@@ -304,6 +306,9 @@ mod tests {
     #[test]
     fn test_new_header() {
         let num_relays = 4;
+        let dest = TestAddress(String::from(
+            "QmZrXVN6xNkXYqFharGfjG6CjdE3X85werKm8AyMdqsQKS",
+        ));
 
         let relay_addrs = vec![
             TestAddress(String::from(
@@ -345,7 +350,7 @@ mod tests {
             x25519_ristretto::EphemeralSecretKey,
             sha256::Hash,
         >::with_shared_secrets(
-            num_relays, &relay_addrs, session_key, &shared_secrets
+            num_relays, &relay_addrs, dest, session_key, &shared_secrets
         )
         .unwrap();
 
@@ -370,6 +375,9 @@ mod tests {
     #[test]
     fn test_return_shared_secrets() {
         let num_relays = 4;
+        let dest = TestAddress(String::from(
+            "QmZrXVN6xNkXYqFharGfjG6CjdE3X85werKm8AyMdqsQKS",
+        ));
 
         let routing_info = vec![
             TestAddress(String::from(
@@ -411,7 +419,11 @@ mod tests {
             x25519_ristretto::EphemeralSecretKey,
             sha256::Hash,
         >::with_shared_secrets(
-            num_relays, &routing_info, session_key, &shared_secrets
+            num_relays,
+            &routing_info,
+            dest,
+            session_key,
+            &shared_secrets,
         )
         .unwrap();
 
@@ -427,6 +439,9 @@ mod tests {
     #[test]
     fn test_header_from_bytes() {
         let num_relays = 4;
+        let dest = TestAddress(String::from(
+            "QmZrXVN6xNkXYqFharGfjG6CjdE3X85werKm8AyMdqsQKS",
+        ));
 
         let routing_info = vec![
             TestAddress(String::from(
@@ -468,7 +483,11 @@ mod tests {
             x25519_ristretto::EphemeralSecretKey,
             sha256::Hash,
         >::with_shared_secrets(
-            num_relays, &routing_info, session_key, &shared_secrets
+            num_relays,
+            &routing_info,
+            dest,
+            session_key,
+            &shared_secrets,
         )
         .unwrap();
 

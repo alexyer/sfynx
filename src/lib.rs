@@ -58,7 +58,7 @@ mod tests {
 
     #[test]
     fn test_e2e() {
-        let max_relays = 5;
+        let max_relays = 4;
         let dest = TestAddress(String::from(
             "/ip6/2607:f8b0:4003:c01::6a/udp/5678#000000000",
         ));
@@ -74,9 +74,6 @@ mod tests {
             )),
             TestAddress(String::from(
                 "/ip4/120.120.0.2/tcp/1222#00000000000000000000",
-            )),
-            TestAddress(String::from(
-                "/ip6/2607:f8b0:4003:c01::6a/udp/5678#000000000",
             )),
         ];
 
@@ -99,12 +96,11 @@ mod tests {
                 session_key,
                 circuit_pub_keys,
                 &routing_info,
+                dest.clone(),
                 max_relays,
                 &payload,
             )
             .unwrap();
-
-        let mut next_addr = None;
 
         for (keypair, _) in circuit_keypairs
             .iter()
@@ -117,12 +113,9 @@ mod tests {
                 "Payload was not successfully ENCRYPTED"
             );
 
-            let (_, addr, packet) = new_packet.peel(keypair.clone()).unwrap();
-            next_addr = Some(addr);
+            let (_, _, packet) = new_packet.peel(keypair.clone()).unwrap();
             new_packet = packet;
         }
-
-        assert_eq!(next_addr, Some(dest));
 
         let (_, _, final_packet) = new_packet
             .peel(circuit_keypairs.last().unwrap().clone())

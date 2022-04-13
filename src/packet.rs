@@ -74,6 +74,7 @@ where
         session_key: ESK,
         circuit_pub_keys: Vec<<ESK as DiffieHellman>::PK>,
         routing_info: &[A],
+        dest: impl Address,
         max_relays: usize,
         payload: &[u8],
     ) -> Result<(Vec<<ESK as DiffieHellman>::SSK>, Self), SfynxError> {
@@ -84,6 +85,7 @@ where
             session_key,
             circuit_pub_keys,
             routing_info,
+            dest,
             max_relays,
             payload,
             &shared_secrets,
@@ -94,6 +96,7 @@ where
         session_key: ESK,
         circuit_pub_keys: Vec<<ESK as DiffieHellman>::PK>,
         routing_info: &[A],
+        dest: impl Address,
         max_relays: usize,
         payload: &[u8],
         shared_secrets: &[<ESK as DiffieHellman>::SSK],
@@ -105,6 +108,7 @@ where
         let (_, header) = Header::<A, HMAC, SC, ESK, H>::with_shared_secrets(
             max_relays,
             routing_info,
+            dest,
             session_key,
             shared_secrets,
         )?;
