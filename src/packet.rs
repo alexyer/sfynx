@@ -158,7 +158,15 @@ where
         Ok(encrypted_payload)
     }
 
-    fn decrypt_payload(&self, secret: &<ESK as DiffieHellman>::SSK) -> Result<Vec<u8>, SfynxError> {
+    /// Decrypt payload with provided `secret` key.
+    ///
+    /// # Safety
+    /// Unsafe because it ignores header integrity.
+    /// Should be used with caution.
+    pub unsafe fn decrypt_payload(
+        &self,
+        secret: &<ESK as DiffieHellman>::SSK,
+    ) -> Result<Vec<u8>, SfynxError> {
         let mut decrypted_payload = self.payload.clone();
 
         let cipher =
@@ -189,7 +197,7 @@ where
         let shared_secret = session_key.diffie_hellman(&self.header.public_key);
         let (next_addr, header) = self.header.peel(&shared_secret)?;
 
-        let payload = self.decrypt_payload(&shared_secret)?;
+        let payload = unsafe { self.decrypt_payload(&shared_secret)? };
 
         Ok((
             shared_secret,

@@ -91,6 +91,7 @@ where
     <ESK as SecretKey>::PK: Blind + ToVec + FromBytes,
     HASH: Hash,
 {
+    #[allow(clippy::type_complexity)]
     pub fn new(
         max_relays: usize,
         routing_info: &[A],
@@ -110,6 +111,7 @@ where
         Self::with_shared_secrets(max_relays, routing_info, dest, session_key, &shared_secrets)
     }
 
+    #[allow(clippy::type_complexity)]
     pub fn with_shared_secrets(
         max_relays: usize,
         routing_info: &[A],
