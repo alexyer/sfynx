@@ -158,23 +158,21 @@ where
         Ok(encrypted_payload)
     }
 
-    /// Decrypt payload with provided `secret` key.
+    /// Decrypt payload in-place with provided `secret` key.
     ///
     /// # Safety
     /// Unsafe because it ignores header integrity.
     /// Should be used with caution.
     pub unsafe fn decrypt_payload(
         &self,
+        payload: &mut [u8],
         secret: &<ESK as DiffieHellman>::SSK,
-    ) -> Result<Vec<u8>, SfynxError> {
-        let mut decrypted_payload = self.payload.clone();
+    ) -> Result<(), SfynxError> {
+        let cipher = generate_cipher_stream::<SC>(&secret.to_vec(), &[0; 12], payload.len())
+            .map_err(|e| SfynxError::StreamCipherError(format!("{:?}", e)))?;
+        xor(payload, &cipher);
 
-        let cipher =
-            generate_cipher_stream::<SC>(&secret.to_vec(), &[0; 12], decrypted_payload.len())
-                .map_err(|e| SfynxError::StreamCipherError(format!("{:?}", e)))?;
-        xor(&mut decrypted_payload, &cipher);
-
-        Ok(decrypted_payload)
+        Ok(())
     }
 
     /// Wrap payload in an onion encryption layer in-place.
@@ -197,7 +195,8 @@ where
         let shared_secret = session_key.diffie_hellman(&self.header.public_key);
         let (next_addr, header) = self.header.peel(&shared_secret)?;
 
-        let payload = unsafe { self.decrypt_payload(&shared_secret)? };
+        let mut payload = self.payload.clone();
+        unsafe { self.decrypt_payload(&mut payload, &shared_secret)? };
 
         Ok((
             shared_secret,
