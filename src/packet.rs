@@ -76,7 +76,7 @@ where
         circuit_pub_keys: Vec<<ESK as DiffieHellman>::PK>,
         routing_info: &[A],
         dest: impl Address,
-        max_relays: usize,
+        max_relays: u8,
         payload: &[u8],
     ) -> Result<(Vec<<ESK as DiffieHellman>::SSK>, Self), SfynxError> {
         let shared_secrets =
@@ -98,7 +98,7 @@ where
         circuit_pub_keys: Vec<<ESK as DiffieHellman>::PK>,
         routing_info: &[A],
         dest: impl Address,
-        max_relays: usize,
+        max_relays: u8,
         payload: &[u8],
         shared_secrets: &[<ESK as DiffieHellman>::SSK],
     ) -> Result<(Vec<<ESK as DiffieHellman>::SSK>, Self), SfynxError> {
@@ -127,12 +127,12 @@ where
         ))
     }
 
+    /// Create `Packet` from header and payload bytes.
     pub fn from_bytes(
         header_bytes: impl AsRef<[u8]>,
         payload_bytes: impl AsRef<[u8]>,
-        max_relays: usize,
     ) -> Result<Self, SfynxError> {
-        let header = Header::from_bytes(header_bytes, max_relays)?;
+        let header = Header::from_bytes(header_bytes)?;
         let payload = Vec::from(payload_bytes.as_ref());
 
         Ok(Self {

@@ -28,7 +28,7 @@ where
     HASH: Hash,
 {
     /// Maximum number of hops per circuit.
-    max_relays: usize,
+    max_relays: u8,
 
     /// Routing table for the header.
     pub routing_info: Vec<u8>,
@@ -93,7 +93,7 @@ where
 {
     #[allow(clippy::type_complexity)]
     pub fn new(
-        max_relays: usize,
+        max_relays: u8,
         routing_info: &[A],
         dest: impl Address,
         session_key: ESK,
@@ -113,7 +113,7 @@ where
 
     #[allow(clippy::type_complexity)]
     pub fn with_shared_secrets(
-        max_relays: usize,
+        max_relays: u8,
         routing_info: &[A],
         dest: impl Address,
         session_key: ESK,
@@ -128,11 +128,12 @@ where
         Self::validate_header_input(max_relays, routing_info)?;
 
         let relay_data_size: usize = A::LEN + H::LEN;
-        let routing_info_size: usize = max_relays * relay_data_size;
+        let routing_info_size: usize = max_relays as usize * relay_data_size;
         let stream_size = routing_info_size + relay_data_size;
 
-        let padding = generate_padding::<H, SC>(A::LEN, max_relays, shared_secrets, &[0; 12])
-            .map_err(|e| SfynxError::StreamCipherError(format!("{:?}", e)))?;
+        let padding =
+            generate_padding::<H, SC>(A::LEN, max_relays.into(), shared_secrets, &[0; 12])
+                .map_err(|e| SfynxError::StreamCipherError(format!("{:?}", e)))?;
 
         let mut routing_info_bytes = vec![0; routing_info_size];
 
@@ -182,16 +183,19 @@ where
         ))
     }
 
-    pub fn from_bytes(bytes: impl AsRef<[u8]>, max_relays: usize) -> Result<Self, SfynxError> {
-        let routing_info = Vec::from(&bytes.as_ref()[..max_relays * (A::LEN + H::LEN)]);
+    pub fn from_bytes(bytes: impl AsRef<[u8]>) -> Result<Self, SfynxError> {
+        let max_relays = bytes.as_ref()[0] as usize;
+        let bytes = &bytes.as_ref()[1..];
+
+        let routing_info = Vec::from(&bytes[..max_relays * (A::LEN + H::LEN)]);
         let routing_info_mac = Vec::from(
-            &bytes.as_ref()
-                [max_relays * (A::LEN + H::LEN)..max_relays * (A::LEN + H::LEN) + H::LEN],
+            &bytes[max_relays * (A::LEN + H::LEN)..max_relays * (A::LEN + H::LEN) + H::LEN],
         );
-        let public_key = <ESK as SecretKey>::PK::from_bytes(
-            &bytes.as_ref()[max_relays * (A::LEN + H::LEN) + H::LEN..],
-        )
-        .map_err(|e| SfynxError::KeyPairError(format!("{:?}", e)))?;
+        let public_key =
+            <ESK as SecretKey>::PK::from_bytes(&bytes[max_relays * (A::LEN + H::LEN) + H::LEN..])
+                .map_err(|e| SfynxError::KeyPairError(format!("{:?}", e)))?;
+
+        let max_relays = max_relays as u8;
 
         Ok(Self {
             max_relays,
@@ -207,6 +211,7 @@ where
 
     pub fn to_vec(&self) -> Result<Vec<u8>, SfynxError> {
         let mut bytes = Vec::new();
+        bytes.extend(&[self.max_relays]);
         bytes.extend(&self.routing_info);
         bytes.extend(&self.routing_info_mac);
         bytes.extend(&self.public_key.to_vec());
@@ -215,11 +220,11 @@ where
     }
 
     /// Validate header input data. Panics if data is incorrect.
-    fn validate_header_input(max_relays: usize, routing_info: &[A]) -> Result<(), SfynxError>
+    fn validate_header_input(max_relays: u8, routing_info: &[A]) -> Result<(), SfynxError>
     where
         A: Address,
     {
-        if routing_info.len() > max_relays {
+        if routing_info.len() > max_relays as usize {
             Err(SfynxError::WrongRoutingInfoLength)
         } else {
             Ok(())
@@ -232,7 +237,7 @@ where
         shared_secret: &<ESK as DiffieHellman>::SSK,
     ) -> Result<(A, Self), SfynxError> {
         let relay_data_size: usize = A::LEN + H::LEN;
-        let routing_info_size: usize = self.max_relays * relay_data_size;
+        let routing_info_size: usize = self.max_relays as usize * relay_data_size;
         let stream_size = routing_info_size + relay_data_size;
 
         let enc_key = generate_encryption_key::<H>(&shared_secret.to_vec(), ENCRYPTION);
@@ -500,7 +505,7 @@ mod tests {
             chacha20::StreamCipher,
             x25519_ristretto::EphemeralSecretKey,
             sha256::Hash,
-        >::from_bytes(&bytes, 4)
+        >::from_bytes(&bytes)
         .unwrap();
 
         assert_eq!(header_from_bytes.routing_info, header.routing_info);
