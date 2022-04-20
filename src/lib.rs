@@ -29,6 +29,24 @@ pub enum SfynxError {
     InvalidMac,
 }
 
+#[cfg(feature = "std")]
+impl std::fmt::Display for SfynxError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let message = match self {
+            SfynxError::WrongRoutingInfoLength => String::from("WrongRoutingInfoLength"),
+            SfynxError::StreamCipherError(e) => format!("StreamCipherError({})", e),
+            SfynxError::EmptyCircuit => String::from("EmptyCircuit"),
+            SfynxError::KeyPairError(e) => format!("KeyPairError({})", e),
+            SfynxError::InvalidMac => String::from("InvalidMac"),
+        };
+
+        f.write_str(&message)
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for SfynxError {}
+
 #[cfg(test)]
 mod tests {
     use cryptimitives::{hash, hmac, key::x25519_ristretto, stream_cipher::chacha20};
