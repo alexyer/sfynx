@@ -18,7 +18,7 @@ use crate::{
     Address, SfynxError, ENCRYPTION, HASH,
 };
 
-#[derive(Zeroize)]
+#[derive(Clone, Zeroize)]
 pub struct Header<A, H, SC, ESK, HASH>
 where
     A: Address,

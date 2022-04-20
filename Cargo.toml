@@ -1,7 +1,7 @@
 [package]
 name = "sfynx"
 license = "MIT"
-version = "0.8.2"
+version = "0.8.3"
 edition = "2021"
 authors = ["Oleksandr Yermakov <olexander.yermakov@gmail.com>"]
 categories = ["cryptography"]

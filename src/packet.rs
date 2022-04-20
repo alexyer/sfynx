@@ -18,6 +18,7 @@ use crate::{
 };
 
 /// Sphinx packet.
+#[derive(Clone)]
 pub struct Packet<A, HMAC, SC, ESK, H>
 where
     A: Address,
