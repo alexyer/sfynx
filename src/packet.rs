@@ -170,7 +170,7 @@ where
         secret: &<ESK as DiffieHellman>::SSK,
     ) -> Result<(), SfynxError> {
         let cipher = generate_cipher_stream::<SC>(&secret.to_vec(), &[0; 12], payload.len())
-            .map_err(|e| SfynxError::StreamCipherError(format!("{:?}", e)))?;
+            .map_err(|e| SfynxError::StreamCipherError(format!("{e:?}")))?;
         xor(payload, &cipher);
 
         Ok(())
@@ -182,7 +182,7 @@ where
         secret: &<ESK as DiffieHellman>::SSK,
     ) -> Result<(), SfynxError> {
         let cipher = generate_cipher_stream::<SC>(&secret.to_vec(), &[0; 12], payload.len())
-            .map_err(|e| SfynxError::StreamCipherError(format!("{:?}", e)))?;
+            .map_err(|e| SfynxError::StreamCipherError(format!("{e:?}")))?;
         xor(payload, &cipher);
 
         Ok(())

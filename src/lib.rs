@@ -1,6 +1,4 @@
 //! General-purpose onion routing packet construction and processor based on Sphinx.
-#![feature(explicit_generic_args_with_impl_trait)]
-
 use core::fmt::Debug;
 use cryptraits::convert::Len;
 

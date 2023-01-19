@@ -133,7 +133,7 @@ where
 
         let padding =
             generate_padding::<H, SC>(A::LEN, max_relays.into(), shared_secrets, &[0; 12])
-                .map_err(|e| SfynxError::StreamCipherError(format!("{:?}", e)))?;
+                .map_err(|e| SfynxError::StreamCipherError(format!("{e:?}")))?;
 
         let mut routing_info_bytes = vec![0; routing_info_size];
 
@@ -154,7 +154,7 @@ where
             routing_info_bytes[A::LEN..relay_data_size].copy_from_slice(&routing_info_mac);
 
             let cipher = generate_cipher_stream::<SC>(&enc_key, &[0; 12], stream_size)
-                .map_err(|e| SfynxError::StreamCipherError(format!("{:?}", e)))?;
+                .map_err(|e| SfynxError::StreamCipherError(format!("{e:?}")))?;
 
             xor(&mut routing_info_bytes, &cipher[..routing_info_size]);
 
@@ -193,7 +193,7 @@ where
         );
         let public_key =
             <ESK as SecretKey>::PK::from_bytes(&bytes[max_relays * (A::LEN + H::LEN) + H::LEN..])
-                .map_err(|e| SfynxError::KeyPairError(format!("{:?}", e)))?;
+                .map_err(|e| SfynxError::KeyPairError(format!("{e:?}")))?;
 
         let max_relays = max_relays as u8;
 
@@ -253,7 +253,7 @@ where
         routing_info.extend(vec![0; H::LEN + A::LEN]);
 
         let cipher = generate_cipher_stream::<SC>(&enc_key.to_vec(), &[0; 12], stream_size)
-            .map_err(|e| SfynxError::StreamCipherError(format!("{:?}", e)))?;
+            .map_err(|e| SfynxError::StreamCipherError(format!("{e:?}")))?;
 
         xor(&mut routing_info[..stream_size], &cipher);
 
@@ -266,7 +266,7 @@ where
         let new_public_key = self
             .public_key
             .to_blind(&blinding_factor)
-            .map_err(|e| SfynxError::KeyPairError(format!("{:?}", e)))?;
+            .map_err(|e| SfynxError::KeyPairError(format!("{e:?}")))?;
 
         let next_header = Self {
             max_relays: self.max_relays,

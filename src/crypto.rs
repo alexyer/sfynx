@@ -78,7 +78,7 @@ where
 
         session_key
             .blind(&blinding_factor)
-            .map_err(|e| SfynxError::KeyPairError(format!("{:?}", e)))?;
+            .map_err(|e| SfynxError::KeyPairError(format!("{e:?}")))?;
 
         shared_secrets.push(shared_secret);
     }
